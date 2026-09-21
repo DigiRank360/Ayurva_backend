@@ -9,10 +9,17 @@ const productSchema = mongoose.Schema({
     },
     sku: { type: String, required: true, unique: true },
     name: { type: String, required: true },
+    subtitle: { type: String, default: '' },
+    shortDescription: { type: String, default: '' },
+    packSize: { type: String, default: '' },
+    featuredTag: { type: String, default: '' },
     images: [{ type: String }],
     categoryId: { type: String, required: true },
     categoryName: { type: String },
     description: { type: String, required: true },
+    ingredients: [{ type: String }],
+    benefits: [{ type: String }],
+    keyPoints: [{ type: String }],
     additionalSections: [{
         title: { type: String, required: true },
         content: { type: String, required: true }

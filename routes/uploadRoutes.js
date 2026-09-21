@@ -15,7 +15,8 @@ router.post('/', protect, admin, upload.single('image'), (req, res) => {
 
         res.json({
             message: 'Image uploaded successfully',
-            imageUrl: `/${req.file.path}`
+            imageUrl: req.file.path,
+            publicId: req.file.filename
         });
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -31,7 +32,7 @@ router.post('/multiple', protect, admin, upload.array('images', 5), (req, res) =
             return res.status(400).json({ message: 'No files uploaded' });
         }
 
-        const imageUrls = req.files.map(file => `/${file.path}`);
+        const imageUrls = req.files.map(file => file.path);
 
         res.json({
             message: `${req.files.length} images uploaded successfully`,

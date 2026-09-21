@@ -1,18 +1,7 @@
 
 const multer = require('multer');
+const { storage } = require('../config/cloudinary');
 const path = require('path');
-
-// Storage configuration
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        cb(null, 'uploads/'); // Store in uploads folder
-    },
-    filename: function (req, file, cb) {
-        // Generate unique filename
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
-    }
-});
 
 // File filter - only allow images
 const fileFilter = (req, file, cb) => {
@@ -27,12 +16,11 @@ const fileFilter = (req, file, cb) => {
     }
 };
 
-// Multer configuration
 const upload = multer({
-    storage: storage,
-    fileFilter: fileFilter,
+    storage,
+    fileFilter,
     limits: {
-        fileSize: 5 * 1024 * 1024 // 5MB limit
+        fileSize: 5 * 1024 * 1024
     }
 });
 

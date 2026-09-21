@@ -1,10 +1,13 @@
 const mongoose = require('mongoose');
+const dotenv = require('dotenv');
 const bcrypt = require('bcryptjs');
 const User = require('./models/User');
 
+dotenv.config();
+
 const resetAdmin = async () => {
     try {
-        await mongoose.connect('mongodb://localhost:27017/luga_vastra');
+        await mongoose.connect(process.env.MONGO_URI);
 
         console.log('Connected to DB');
 
@@ -15,7 +18,7 @@ const resetAdmin = async () => {
         // Create new admin
         const newAdmin = new User({
             name: 'Super Admin',
-            email: 'admin@lugavastra.com',
+            email: 'admin@ayurvapro.com',
             password: 'AdminPassword123!',
             phone: '0000000000',
             isAdmin: true
@@ -23,12 +26,14 @@ const resetAdmin = async () => {
 
         await newAdmin.save();
         console.log('✅ New admin created successfully.');
-        console.log('Email: admin@lugavastra.com');
+        console.log('Email: admin@ayurvapro.com');
         console.log('Password: AdminPassword123!');
 
+        await mongoose.disconnect();
         process.exit(0);
     } catch (error) {
         console.error('Error resetting admin:', error);
+        await mongoose.disconnect();
         process.exit(1);
     }
 };

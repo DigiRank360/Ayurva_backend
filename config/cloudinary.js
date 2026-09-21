@@ -1,7 +1,6 @@
 
 const cloudinary = require('cloudinary').v2;
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
-const multer = require('multer');
 
 // Configure cloudinary
 cloudinary.config({
@@ -14,17 +13,10 @@ cloudinary.config({
 const storage = new CloudinaryStorage({
     cloudinary: cloudinary,
     params: {
-        folder: 'luga-vastra/products',
+        folder: 'ayurva-pro/products',
         allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
         transformation: [{ width: 1000, height: 1000, crop: 'limit' }]
     }
 });
 
-const upload = multer({ 
-    storage: storage,
-    limits: {
-        fileSize: 5 * 1024 * 1024 // 5MB limit
-    }
-});
-
-module.exports = { cloudinary, upload };
+module.exports = { cloudinary, storage };

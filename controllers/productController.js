@@ -199,10 +199,17 @@ const createProduct = async (req, res) => {
         const {
             sku,
             name,
+            subtitle,
+            shortDescription,
+            packSize,
+            featuredTag,
             price,
             images,
             categoryId,
             description,
+            ingredients,
+            benefits,
+            keyPoints,
             additionalSections,
             availableSizes,
             availableColors,
@@ -243,12 +250,19 @@ const createProduct = async (req, res) => {
         const product = new Product({
             sku,
             name,
+            subtitle: subtitle || '',
+            shortDescription: shortDescription || '',
+            packSize: packSize || '',
+            featuredTag: featuredTag || '',
             price,
             user: req.user._id,
             images: images || [],
             categoryId,
             categoryName: category.name, // Auto-set from DB
             description,
+            ingredients: ingredients ? (Array.isArray(ingredients) ? ingredients : JSON.parse(ingredients)) : [],
+            benefits: benefits ? (Array.isArray(benefits) ? benefits : JSON.parse(benefits)) : [],
+            keyPoints: keyPoints ? (Array.isArray(keyPoints) ? keyPoints : JSON.parse(keyPoints)) : [],
             additionalSections: additionalSections ? (typeof additionalSections === 'string' ? JSON.parse(additionalSections) : additionalSections) : [],
             availableSizes: availableSizes ? (typeof availableSizes === 'string' ? JSON.parse(availableSizes) : availableSizes) : [],
             availableColors: availableColors ? (typeof availableColors === 'string' ? JSON.parse(availableColors) : availableColors) : [],
@@ -321,9 +335,31 @@ const updateProduct = async (req, res) => {
         // Update fields
         product.sku = sku || product.sku;
         product.name = req.body.name || product.name;
+        product.subtitle = req.body.subtitle !== undefined ? req.body.subtitle : product.subtitle;
+        product.shortDescription = req.body.shortDescription !== undefined ? req.body.shortDescription : product.shortDescription;
+        product.packSize = req.body.packSize !== undefined ? req.body.packSize : product.packSize;
+        product.featuredTag = req.body.featuredTag !== undefined ? req.body.featuredTag : product.featuredTag;
         product.price = req.body.price !== undefined ? req.body.price : product.price;
         product.mrp = req.body.mrp !== undefined ? req.body.mrp : product.mrp;
         product.description = req.body.description || product.description;
+
+        if (req.body.ingredients) {
+            product.ingredients = Array.isArray(req.body.ingredients)
+                ? req.body.ingredients
+                : JSON.parse(req.body.ingredients);
+        }
+
+        if (req.body.benefits) {
+            product.benefits = Array.isArray(req.body.benefits)
+                ? req.body.benefits
+                : JSON.parse(req.body.benefits);
+        }
+
+        if (req.body.keyPoints) {
+            product.keyPoints = Array.isArray(req.body.keyPoints)
+                ? req.body.keyPoints
+                : JSON.parse(req.body.keyPoints);
+        }
 
         if (req.body.additionalSections) {
             product.additionalSections = typeof req.body.additionalSections === 'string'

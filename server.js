@@ -15,8 +15,8 @@ const app = express();
 
 // CORS configuration
 const allowedOrigins = ['http://localhost:3001', 
-    "https://lugavastra.com",
-    "https://www.lugavastra.com",
+    "https://ayurvapro.com",
+    "https://www.ayurvapro.com",
     'http://localhost:5173'];
 app.use(cors({
     origin: function (origin, callback) {
