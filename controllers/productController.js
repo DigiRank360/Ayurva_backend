@@ -263,7 +263,14 @@ const createProduct = async (req, res) => {
             ingredients: ingredients ? (Array.isArray(ingredients) ? ingredients : JSON.parse(ingredients)) : [],
             benefits: benefits ? (Array.isArray(benefits) ? benefits : JSON.parse(benefits)) : [],
             keyPoints: keyPoints ? (Array.isArray(keyPoints) ? keyPoints : JSON.parse(keyPoints)) : [],
-            additionalSections: additionalSections ? (typeof additionalSections === 'string' ? JSON.parse(additionalSections) : additionalSections) : [],
+            additionalSections: additionalSections
+                ? (typeof additionalSections === 'string' ? JSON.parse(additionalSections) : additionalSections)
+                    .map(section => ({
+                        title: String(section.title || '').trim(),
+                        content: String(section.content || '').trim(),
+                    }))
+                    .filter(section => section.title && section.content)
+                : [],
             availableSizes: availableSizes ? (typeof availableSizes === 'string' ? JSON.parse(availableSizes) : availableSizes) : [],
             availableColors: availableColors ? (typeof availableColors === 'string' ? JSON.parse(availableColors) : availableColors) : [],
             mrp: mrp ? parseFloat(mrp) : 0,
