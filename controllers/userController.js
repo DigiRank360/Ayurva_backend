@@ -1,6 +1,8 @@
 
+const { randomInt } = require('node:crypto');
 const User = require('../models/User');
 const generateToken = require('../utils/generateToken');
+const { sendOtpSms } = require('../utils/twilioService');
 
 // @desc    Auth user & get token
 // @route   POST /api/users/login
@@ -255,15 +257,18 @@ const sendOTP = async (req, res) => {
     try {
         const { phone } = req.body;
 
-        if (!phone) {
+        if (typeof phone !== 'string' || !phone) {
             return res.status(400).json({ success: false, message: 'Phone number is required' });
+        }
+
+        if (!/^\+[1-9]\d{7,14}$/.test(phone)) {
+            return res.status(400).json({ success: false, message: 'Phone number must use international format, such as +919876543210' });
         }
 
         let user = await User.findOne({ phone });
 
-        // Default OTP for Demo as requested
-        const otp = '123456';
-        const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+        const otp = randomInt(100000, 1000000).toString();
+        const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
 
         if (user) {
             user.otp = otp;
@@ -279,8 +284,17 @@ const sendOTP = async (req, res) => {
             });
         }
 
-        // MOCK TWILIO SEND
-        console.log(`📱 [Twilio Mock] Sending OTP ${otp} to ${phone}`);
+        try {
+            await sendOtpSms(phone, otp);
+        } catch (error) {
+            user.otp = undefined;
+            user.otpExpires = undefined;
+            await user.save().catch((saveError) => {
+                console.error('OTP cleanup failed:', saveError.message);
+            });
+            console.error('TWILIO_SEND_OTP_ERROR:', error.response?.data?.message || error.message);
+            return res.status(502).json({ success: false, message: 'Failed to send OTP. Check the phone number and try again.' });
+        }
 
         res.json({
             success: true,
@@ -311,12 +325,13 @@ const verifyOTP = async (req, res) => {
             return res.status(404).json({ success: false, message: 'User not found' });
         }
 
-        // Check if OTP matches and is not expired
-        // Always allow 123456 for demo as requested
-        if ((user.otp === otp || otp === '123456') && user.otpExpires > Date.now()) {
+        const submittedOtp = String(otp);
+        if (user.otp === submittedOtp && user.otpExpires > Date.now()) {
             const isNewUser = user.name.startsWith('User ');
 
             user.otp = undefined;
+            user.otpExpires = undefined;
+            await user.save();
             const token = generateToken(user._id);
 
             // Set HTTP-only cookie

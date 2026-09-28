@@ -1,4 +1,9 @@
 
+const cloudinaryUrl = process.env.CLOUDINARY_URL?.trim();
+if (cloudinaryUrl?.startsWith('CLOUDINARY_URL=')) {
+    process.env.CLOUDINARY_URL = cloudinaryUrl.slice('CLOUDINARY_URL='.length);
+}
+
 const cloudinary = require('cloudinary').v2;
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const fs = require('fs');
