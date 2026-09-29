@@ -1,25 +1,42 @@
 const axios = require('axios');
 
-const sendOtpSms = async (phone, otp) => {
+const getTwilioConfig = () => {
     const accountSid = process.env.Twilio_ACCOUNT_SID;
     const authToken = process.env.Twilio_AUTH_TOKEN;
-    const fromNumber = process.env.Twilio_PHONE_NUMBER;
+    const verifyServiceSid = process.env.TWILIO_VERIFY_SERVICE_SID;
 
-    if (!accountSid || !authToken || !fromNumber) {
-        throw new Error('Twilio SMS credentials are not configured');
+    if (!accountSid || !authToken || !verifyServiceSid) {
+        throw new Error('Twilio Verify is not configured. Set Twilio_ACCOUNT_SID, Twilio_AUTH_TOKEN, and TWILIO_VERIFY_SERVICE_SID.');
     }
 
-    const form = new URLSearchParams({
-        To: phone,
-        From: fromNumber,
-        Body: `Your AyurvaPro verification code is ${otp}. It expires in 10 minutes.`
-    });
-    const url = `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(accountSid)}/Messages.json`;
+    return { accountSid, authToken, verifyServiceSid };
+};
 
-    return axios.post(url, form.toString(), {
+const getVerifyUrl = (verifyServiceSid, endpoint) =>
+    `https://verify.twilio.com/v2/Services/${encodeURIComponent(verifyServiceSid)}/${endpoint}`;
+
+const startOtpVerification = async (phone) => {
+    const { accountSid, authToken, verifyServiceSid } = getTwilioConfig();
+
+    return axios.post(getVerifyUrl(verifyServiceSid, 'Verifications'), new URLSearchParams({
+        To: phone,
+        Channel: 'sms'
+    }).toString(), {
         auth: { username: accountSid, password: authToken },
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
     });
 };
 
-module.exports = { sendOtpSms };
+const checkOtpVerification = async (phone, code) => {
+    const { accountSid, authToken, verifyServiceSid } = getTwilioConfig();
+
+    return axios.post(getVerifyUrl(verifyServiceSid, 'VerificationCheck'), new URLSearchParams({
+        To: phone,
+        Code: code
+    }).toString(), {
+        auth: { username: accountSid, password: authToken },
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+    });
+};
+
+module.exports = { startOtpVerification, checkOtpVerification };

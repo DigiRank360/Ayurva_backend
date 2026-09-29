@@ -99,19 +99,45 @@ const getDashboardStats = async (req, res) => {
 // @access  Private/Admin
 const getAllOrders = async (req, res) => {
     try {
-        const { page = 1, limit = 20 } = req.query;
+        const { page = 1, limit = 20, status, search } = req.query;
 
         const pageNum = parseInt(page);
         const limitNum = parseInt(limit);
         const skip = (pageNum - 1) * limitNum;
 
-        const orders = await Order.find({})
+        const query = status ? { orderStatus: status } : {};
+        if (search) {
+            const safeSearch = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const matchingUsers = await User.find({
+                $or: [
+                    { name: { $regex: safeSearch, $options: 'i' } },
+                    { email: { $regex: safeSearch, $options: 'i' } }
+                ]
+            }).distinct('_id');
+            const searchFilters = [
+                { user: { $in: matchingUsers } },
+                { 'shippingAddress.name': { $regex: safeSearch, $options: 'i' } }
+            ];
+            if (/^[a-f\d]{1,24}$/i.test(search)) {
+                searchFilters.push({
+                    $expr: {
+                        $regexMatch: {
+                            input: { $toString: '$_id' },
+                            regex: safeSearch,
+                            options: 'i'
+                        }
+                    }
+                });
+            }
+            query.$or = searchFilters;
+        }
+        const orders = await Order.find(query)
             .populate('user', 'name email')
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(limitNum);
 
-        const totalOrders = await Order.countDocuments();
+        const totalOrders = await Order.countDocuments(query);
 
         res.json({
             orders,
@@ -149,7 +175,11 @@ const getOrderStats = async (req, res) => {
                 $group: {
                     _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
                     count: { $sum: 1 },
-                    revenue: { $sum: '$totalPrice' }
+                    revenue: {
+                        $sum: {
+                            $cond: [{ $eq: ['$paymentStatus', 'Paid'] }, '$totalPrice', 0]
+                        }
+                    }
                 }
             },
             { $sort: { _id: 1 } }

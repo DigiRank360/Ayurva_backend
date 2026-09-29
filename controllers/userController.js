@@ -1,8 +1,7 @@
 
-const { randomInt } = require('node:crypto');
 const User = require('../models/User');
 const generateToken = require('../utils/generateToken');
-const { sendOtpSms } = require('../utils/twilioService');
+const { startOtpVerification, checkOtpVerification } = require('../utils/twilioService');
 
 // @desc    Auth user & get token
 // @route   POST /api/users/login
@@ -65,6 +64,7 @@ const registerUser = async (req, res) => {
                 _id: user._id,
                 name: user.name,
                 email: user.email,
+                phone: user.phone,
                 isAdmin: user.isAdmin,
                 token: generateToken(user._id),
             });
@@ -121,6 +121,7 @@ const updateUserProfile = async (req, res) => {
                 _id: updatedUser._id,
                 name: updatedUser.name,
                 email: updatedUser.email,
+                phone: updatedUser.phone,
                 isAdmin: updatedUser.isAdmin,
                 token: generateToken(updatedUser._id),
             });
@@ -267,33 +268,29 @@ const sendOTP = async (req, res) => {
 
         let user = await User.findOne({ phone });
 
-        const otp = randomInt(100000, 1000000).toString();
-        const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
-
-        if (user) {
-            user.otp = otp;
-            user.otpExpires = otpExpires;
-            await user.save();
-        } else {
+        if (!user) {
             // Auto-register if user doesn't exist
             user = await User.create({
                 name: `User ${phone.slice(-4)}`,
-                phone,
-                otp,
-                otpExpires,
+                phone
             });
         }
 
         try {
-            await sendOtpSms(phone, otp);
-        } catch (error) {
             user.otp = undefined;
             user.otpExpires = undefined;
-            await user.save().catch((saveError) => {
-                console.error('OTP cleanup failed:', saveError.message);
-            });
-            console.error('TWILIO_SEND_OTP_ERROR:', error.response?.data?.message || error.message);
-            return res.status(502).json({ success: false, message: 'Failed to send OTP. Check the phone number and try again.' });
+            await user.save();
+            await startOtpVerification(phone);
+        } catch (error) {
+            const twilioMessage = error.response?.data?.message || error.message;
+            const twilioCode = error.response?.data?.code;
+            console.error('TWILIO_SEND_OTP_ERROR:', { code: twilioCode, message: twilioMessage });
+
+            const trialRecipientError = /verified recipient|trial account/i.test(twilioMessage || '');
+            const message = trialRecipientError
+                ? 'This Twilio trial account can only send OTPs to verified recipient numbers. Verify this phone number in Twilio or upgrade the account.'
+                : 'Failed to send OTP. Please try again later.';
+            return res.status(502).json({ success: false, message });
         }
 
         res.json({
@@ -325,8 +322,21 @@ const verifyOTP = async (req, res) => {
             return res.status(404).json({ success: false, message: 'User not found' });
         }
 
-        const submittedOtp = String(otp);
-        if (user.otp === submittedOtp && user.otpExpires > Date.now()) {
+        let verification;
+        try {
+            verification = await checkOtpVerification(phone, String(otp));
+        } catch (error) {
+            const twilioMessage = error.response?.data?.message || error.message;
+            const twilioCode = error.response?.data?.code;
+            console.error('TWILIO_VERIFY_OTP_ERROR:', { code: twilioCode, message: twilioMessage });
+
+            if (error.response?.status === 404) {
+                return res.status(400).json({ success: false, message: 'Invalid or expired OTP' });
+            }
+            return res.status(502).json({ success: false, message: 'OTP verification is temporarily unavailable. Please try again.' });
+        }
+
+        if (verification.data.status === 'approved') {
             const isNewUser = user.name.startsWith('User ');
 
             user.otp = undefined;
