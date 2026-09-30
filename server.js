@@ -5,7 +5,7 @@ const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const connectDB = require('./config/db');
 const { apiLimiter } = require('./middleware/rateLimitMiddleware');
-const morgon = require('morgan');
+const morgan = require('morgan');
 
 dotenv.config();
 
@@ -13,11 +13,19 @@ connectDB();
 
 const app = express();
 
+// Trust Nginx reverse proxy
+app.set('trust proxy', 1);
+
+
 // CORS configuration
-const allowedOrigins = ['http://localhost:3001', 
-    "https://ayurvapro.com",
-    "https://www.ayurvapro.com",
-    'http://localhost:5173'];
+const allowedOrigins = [
+    'http://localhost:3001',
+    'http://localhost:5173',
+    'https://ayuvapro.com',
+    'https://www.ayuvapro.com',
+    'https://admin.ayuvapro.com'
+];
+
 app.use(cors({
     origin: function (origin, callback) {
         // allow requests with no origin (like mobile apps or curl requests)
@@ -37,7 +45,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(express.static('public'));
 app.use(express.static('uploads'));
-app.use(morgon('dev'))
+app.use(morgan('dev'))
 
 // Apply rate limiting to all API routes
 app.use('/api/', apiLimiter);
