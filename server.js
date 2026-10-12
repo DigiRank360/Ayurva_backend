@@ -4,12 +4,12 @@ const dotenv = require('dotenv');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const connectDB = require('./config/db');
+const { startMlmPayoutJob } = require('./jobs/mlmPayoutJob');
+const { initializeMlmIndexes } = require('./services/mlmBootstrapService');
 const { apiLimiter } = require('./middleware/rateLimitMiddleware');
 const morgan = require('morgan');
 
 dotenv.config();
-
-connectDB();
 
 const app = express();
 
@@ -21,6 +21,9 @@ app.set('trust proxy', 1);
 const allowedOrigins = [
     'http://localhost:3001',
     'http://localhost:5173',
+    'http://localhost:5174',
+    'http://127.0.0.1:5173',
+    'http://127.0.0.1:5174',
     'https://ayuvapro.com',
     'https://www.ayuvapro.com',
     'https://admin.ayuvapro.com'
@@ -74,6 +77,7 @@ const shippingRoutes = require('./routes/shippingRoutes');
 const webhookRoutes = require('./routes/webhookRoutes');
 const contactRoutes = require('./routes/contactRoutes');
 const newsletterRoutes = require('./routes/newsletterRoutes');
+const mlmRoutes = require('./routes/mlmRoutes');
 const { notFound, errorHandler } = require('./middleware/errorMiddleware');
 
 // ...
@@ -95,6 +99,7 @@ app.use('/api/shipping', shippingRoutes);
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/contact', contactRoutes);
 app.use('/api/newsletter', newsletterRoutes);
+app.use('/api/mlm', mlmRoutes);
 
 // Error Handling (must be after routes)
 app.use(notFound);
@@ -102,4 +107,13 @@ app.use(errorHandler);
 
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`));
+async function startServer() {
+    await connectDB();
+    await initializeMlmIndexes();
+    const payoutCronEnabled = process.env.MLM_PAYOUT_CRON_ENABLED === 'true'
+        || (process.env.MLM_PAYOUT_CRON_ENABLED !== 'false' && process.env.NODE_ENV === 'production');
+    if (payoutCronEnabled) startMlmPayoutJob();
+    app.listen(PORT, () => console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`));
+}
+
+startServer();

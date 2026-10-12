@@ -6,6 +6,7 @@ const {
     registerUser,
     getUserProfile,
     updateUserProfile,
+    changeUserPassword,
     addUserAddress,
     getUserAddresses,
     updateUserAddress,
@@ -26,6 +27,7 @@ router.post('/forgot-password', forgotPassword);
 router.route('/profile')
     .get(protect, getUserProfile)
     .put(protect, updateUserProfile);
+router.put('/profile/password', protect, changeUserPassword);
 router.route('/addresses').get(protect, getUserAddresses);
 router.route('/address').post(protect, addUserAddress);
 router.route('/address/:addressId')

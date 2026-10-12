@@ -10,7 +10,7 @@ const authUser = async (req, res) => {
     try {
         const { email, password } = req.body;
 
-        const user = await User.findOne({ email });
+        const user = await User.findOne({ email: email?.trim().toLowerCase() });
 
         if (user && (await user.matchPassword(password))) {
             const token = generateToken(user._id);
@@ -43,7 +43,7 @@ const authUser = async (req, res) => {
 // @access  Public
 const registerUser = async (req, res) => {
     try {
-        const { name, email, password, isAdmin } = req.body;
+        const { name, email, password } = req.body;
 
         const userExists = await User.findOne({ email });
 
@@ -56,7 +56,7 @@ const registerUser = async (req, res) => {
             name,
             email,
             password,
-            isAdmin: isAdmin || false, // Support admin creation
+            isAdmin: false,
         });
 
         if (user) {
@@ -128,6 +128,26 @@ const updateUserProfile = async (req, res) => {
         } else {
             res.status(404).json({ message: 'User not found' });
         }
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const changeUserPassword = async (req, res) => {
+    try {
+        const { currentPassword, newPassword } = req.body;
+        if (typeof currentPassword !== 'string' || typeof newPassword !== 'string' || newPassword.length < 8) {
+            return res.status(400).json({ message: 'Enter your current password and a new password of at least 8 characters.' });
+        }
+
+        const user = await User.findById(req.user._id);
+        if (!user || !(await user.matchPassword(currentPassword))) {
+            return res.status(401).json({ message: 'Current password is incorrect.' });
+        }
+
+        user.password = newPassword;
+        await user.save();
+        res.json({ message: 'Password updated successfully.' });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -407,6 +427,7 @@ module.exports = {
     registerUser,
     getUserProfile,
     updateUserProfile,
+    changeUserPassword,
     addUserAddress,
     getUserAddresses,
     updateUserAddress,

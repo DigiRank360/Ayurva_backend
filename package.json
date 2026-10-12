@@ -5,9 +5,10 @@
   "main": "index.js",
   "scripts": {
     "start": "node server.js",
-    "server": "nodemon server.js",
+    "dev": "nodemon server.js",
     "data:import": "node seeder.js",
-    "data:destroy": "node seeder.js -d"
+    "data:destroy": "node seeder.js -d",
+    "test:mlm": "node --test test/*.test.js"
   },
   "keywords": [],
   "author": "",
@@ -28,6 +29,7 @@
     "morgan": "^1.10.1",
     "multer": "^2.0.2",
     "multer-storage-cloudinary": "^4.0.0",
+    "node-cron": "^4.6.0",
     "nodemailer": "^7.0.13",
     "nodemon": "^3.1.11",
     "razorpay": "^2.9.6"

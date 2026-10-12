@@ -1,10 +1,10 @@
 
 // Global error handler middleware
 const errorHandler = (err, req, res, next) => {
-    const statusCode = res.statusCode === 200 ? 500 : res.statusCode;
+    const statusCode = err.statusCode || (err.code === 11000 ? 409 : (res.statusCode === 200 ? 500 : res.statusCode));
     res.status(statusCode);
     res.json({
-        message: err.message,
+        message: err.code === 11000 ? 'An account already uses that email or phone number. Sign in or use different details.' : err.message,
         stack: process.env.NODE_ENV === 'production' ? null : err.stack,
     });
 };

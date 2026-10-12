@@ -3,18 +3,14 @@ const jwt = require('jsonwebtoken');
 const asyncHandler = require('express-async-handler'); // Need to install this or use try-catch
 const User = require('../models/User');
 
-const protect = async (req, res, next) => {
-    let token;
+function getRequestToken(req) {
+    const authorization = req.headers.authorization;
+    const bearerToken = authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
+    return bearerToken || req.cookies?.jwt;
+}
 
-    // Check for token in cookies first, then in headers
-    if (req.cookies && req.cookies.jwt) {
-        token = req.cookies.jwt;
-    } else if (
-        req.headers.authorization &&
-        req.headers.authorization.startsWith('Bearer')
-    ) {
-        token = req.headers.authorization.split(' ')[1];
-    }
+const protect = async (req, res, next) => {
+    const token = getRequestToken(req);
 
     if (token) {
         try {
@@ -43,4 +39,4 @@ const admin = (req, res, next) => {
     }
 };
 
-module.exports = { protect, admin };
+module.exports = { protect, admin, getRequestToken };
