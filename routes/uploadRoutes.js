@@ -32,6 +32,19 @@ router.post('/', protect, admin, upload.single('image'), (req, res) => {
     }
 });
 
+// Banner upload keeps original resolution (no 1000px cap)
+router.post('/banner', protect, admin, upload.banner.single('image'), (req, res) => {
+    if (!req.file) {
+        return res.status(400).json({ message: 'No file uploaded' });
+    }
+
+    res.json({
+        message: 'Image uploaded successfully',
+        imageUrl: getImageUrl(req.file),
+        publicId: req.file.filename
+    });
+});
+
 // @desc    Upload multiple images
 // @route   POST /api/upload/multiple
 // @access  Private/Admin
@@ -54,7 +67,7 @@ router.post('/multiple', protect, admin, upload.array('images', 5), (req, res) =
 
 router.use((error, req, res, next) => {
     if (error.code === 'LIMIT_FILE_SIZE') {
-        return res.status(400).json({ message: 'Image must be smaller than 5 MB' });
+        return res.status(400).json({ message: 'Image must be too large' });
     }
 
     if (error.message === 'Only image files are allowed (jpeg, jpg, png, gif, webp)') {

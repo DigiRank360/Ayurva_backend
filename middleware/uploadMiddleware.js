@@ -1,6 +1,6 @@
 
 const multer = require('multer');
-const { storage } = require('../config/cloudinary');
+const { storage, bannerStorage } = require('../config/cloudinary');
 const path = require('path');
 
 // File filter - only allow images
@@ -22,6 +22,12 @@ const upload = multer({
     limits: {
         fileSize: 5 * 1024 * 1024
     }
+});
+
+upload.banner = multer({
+    storage: bannerStorage,
+    fileFilter,
+    limits: { fileSize: 10 * 1024 * 1024 }
 });
 
 module.exports = upload;

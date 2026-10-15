@@ -23,15 +23,21 @@ cloudinary.config({
 });
 
 // Configure storage
+const createCloudinaryStorage = (folder, transformation) => new CloudinaryStorage({
+    cloudinary,
+    params: {
+        folder,
+        allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
+        ...(transformation && { transformation })
+    }
+});
+
+const bannerStorage = hasCloudinaryConfig
+    ? createCloudinaryStorage('ayurva-pro/banners')
+    : null;
+
 const storage = hasCloudinaryConfig
-    ? new CloudinaryStorage({
-        cloudinary,
-        params: {
-            folder: 'ayurva-pro/products',
-            allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
-            transformation: [{ width: 1000, height: 1000, crop: 'limit' }]
-        }
-    })
+    ? createCloudinaryStorage('ayurva-pro/products', [{ width: 1000, height: 1000, crop: 'limit' }])
     : (() => {
         const multer = require('multer');
         const uploadDirectory = path.join(__dirname, '..', 'uploads');
@@ -46,4 +52,4 @@ const storage = hasCloudinaryConfig
         });
     })();
 
-module.exports = { cloudinary, storage };
+module.exports = { cloudinary, storage, bannerStorage: bannerStorage || storage };
