@@ -42,7 +42,7 @@ const sendOrderConfirmation = async (order, userEmail) => {
                 <p><strong>Total:</strong> ₹${order.totalPrice}</p>
                 <p><strong>Payment Method:</strong> ${order.paymentMethod}</p>
                 <p><strong>Status:</strong> ${order.orderStatus}</p>
-                <p>Thank you for shopping with Luga Vastra!</p>
+                <p>Thank you for shopping with AyuvaPro!</p>
             `
     });
 };
@@ -56,7 +56,7 @@ const sendOrderStatusUpdate = async (order, userEmail) => {
                 <h1>Order Status Updated</h1>
                 <p><strong>Order ID:</strong> ${order._id}</p>
                 <p><strong>New Status:</strong> ${order.orderStatus}</p>
-                <p>Thank you for shopping with Luga Vastra!</p>
+                <p>Thank you for shopping with AyuvaPro!</p>
             `
     });
 };

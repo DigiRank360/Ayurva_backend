@@ -7,6 +7,8 @@ const MlmVolumeEvent = require('../models/MlmVolumeEvent');
 const { calculateFundDistribution } = require('./mlmDistributionService');
 const { getPackage } = require('./mlmPackageService');
 const { getIndiaDateKey } = require('../utils/mlmDate');
+const MlmPayoutAccount = require('../models/MlmPayoutAccount');
+const { assertPhoneVerified, buildPayoutAccount } = require('./mlmRegistrationService');
 const generateToken = require('../utils/generateToken');
 
 function validationError(message, statusCode = 400) {
@@ -38,7 +40,29 @@ async function enrollMember({ userId, packageId, sponsorCode, placementCode, pla
     });
 }
 
-async function registerMember({ name, email, phone, password, packageId, sponsorCode, placementCode, placementLeg }) {
+const APPLICANT_CATEGORIES = ['ayurvedic_practitioner', 'wellness_professional', 'health_advocate', 'other'];
+
+function buildApplicantProfile(input) {
+    if (!input) return null;
+    if (typeof input !== 'object') throw validationError('The applicant profile is invalid.');
+    const text = (value) => (typeof value === 'string' ? value.trim() : '');
+    const profile = {
+        category: text(input.category),
+        councilRegistrationNo: text(input.councilRegistrationNo),
+        organizationName: text(input.organizationName),
+        state: text(input.state),
+        city: text(input.city),
+        pinCode: text(input.pinCode),
+    };
+    if (!APPLICANT_CATEGORIES.includes(profile.category)) throw validationError('Select a valid applicant category.');
+    if (!profile.state || !profile.city) throw validationError('State and city are required.');
+    if (!/^[1-9]\d{5}$/.test(profile.pinCode)) throw validationError('Enter a valid 6-digit PIN code.');
+    if (input.undertakingAccepted !== true) throw validationError('Accept the undertaking to continue.');
+    return { ...profile, undertakingAcceptedAt: new Date() };
+}
+
+async function registerMember({ name, email, phone, password, packageId, sponsorCode, placementCode, placementLeg, applicantProfile, payoutAccount, phoneVerificationToken }) {
+    const profile = buildApplicantProfile(applicantProfile);
     const selectedPackage = getPackage(packageId);
     if (typeof name !== 'string' || !name.trim()) throw validationError('Full name is required.');
     if (typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
@@ -52,6 +76,9 @@ async function registerMember({ name, email, phone, password, packageId, sponsor
     }
     const normalizedEmail = email.trim().toLowerCase();
     const normalizedPhone = phone.trim();
+    // The public partner application enforces OTP and payout details; legacy registrations (e.g. a member adding a downline entry) do not send a profile.
+    if (profile) assertPhoneVerified(normalizedPhone, phoneVerificationToken);
+    const payout = profile ? buildPayoutAccount(payoutAccount, name) : null;
     if (sponsorCode && (typeof sponsorCode !== 'string' || !sponsorCode.trim())) {
         throw validationError('The sponsor code is invalid.');
     }
@@ -147,7 +174,14 @@ async function registerMember({ name, email, phone, password, packageId, sponsor
                 requestedSponsorCode: sponsor?.memberCode || null,
                 requestedPlacementCode: placementParent?.memberCode || null,
                 requestedPlacementLeg: placementParent ? placementLeg : null,
+                applicantProfile: profile,
             }], { session });
+
+            if (payout) {
+                const duplicatePan = await MlmPayoutAccount.exists({ panHash: payout.panHash }).session(session);
+                if (duplicatePan) throw validationError('This PAN is already registered with another member.', 409);
+                await MlmPayoutAccount.create([{ member: member._id, ...payout }], { session });
+            }
 
             result = {
                 token: generateToken(user._id),

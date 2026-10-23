@@ -1,6 +1,7 @@
 const express = require('express');
 const { protect, admin } = require('../middleware/authMiddleware');
 const uploadKycDocuments = require('../middleware/kycUploadMiddleware');
+const rateLimit = require('express-rate-limit');
 const { uploadLimiter } = require('../middleware/rateLimitMiddleware');
 const {
     activateEnrollment,
@@ -32,12 +33,26 @@ const {
     getReferralInfo,
     listPackages,
     register,
+    getRegistrationOptions,
+    sendRegistrationOtp,
+    verifyRegistrationOtp,
     runPayouts,
 } = require('../controllers/mlmController');
 
 const router = express.Router();
 
+const otpLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: process.env.NODE_ENV === 'production' ? 6 : 100,
+    message: { message: 'Too many OTP attempts. Please try again in 15 minutes.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+
 router.get('/packages', listPackages);
+router.get('/register/config', getRegistrationOptions);
+router.post('/register/otp/send', otpLimiter, sendRegistrationOtp);
+router.post('/register/otp/verify', otpLimiter, verifyRegistrationOtp);
 router.post('/register', register);
 router.get('/referrals/:memberCode/placements', getReferralInfo);
 router.post('/enroll', protect, enroll);

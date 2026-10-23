@@ -5,6 +5,7 @@ const MlmPayoutRun = require('../models/MlmPayoutRun');
 const { getIndiaDateKey } = require('../utils/mlmDate');
 const { runDailyPayouts } = require('../services/mlmCommissionService');
 const { activateMember, enrollMember, getReferralPlacements, registerMember } = require('../services/mlmMemberService');
+const { getRegistrationConfig, sendPhoneOtp, verifyPhoneOtp } = require('../services/mlmRegistrationService');
 const { getPackages } = require('../services/mlmPackageService');
 const { getCommissionHistory, getMemberForUser, getPlacementNetwork, getVolumeHistory } = require('../services/mlmReportService');
 const { listWithdrawals, requestWithdrawal, reviewWithdrawal } = require('../services/mlmWithdrawalService');
@@ -27,6 +28,16 @@ const register = asyncHandler(async (req, res) => {
         maxAge: 30 * 24 * 60 * 60 * 1000,
     });
     res.status(201).json(result);
+});
+
+const getRegistrationOptions = (req, res) => res.json(getRegistrationConfig());
+
+const sendRegistrationOtp = asyncHandler(async (req, res) => {
+    res.json(await sendPhoneOtp(req.body.phone));
+});
+
+const verifyRegistrationOtp = asyncHandler(async (req, res) => {
+    res.json(await verifyPhoneOtp(req.body.phone, req.body.code));
 });
 
 const getReferralInfo = asyncHandler(async (req, res) => {
@@ -203,6 +214,9 @@ const getMlmAdminSummary = asyncHandler(async (req, res) => {
 module.exports = {
     listPackages,
     register,
+    getRegistrationOptions,
+    sendRegistrationOtp,
+    verifyRegistrationOtp,
     getReferralInfo,
     enroll,
     getMyMember,
