@@ -8,6 +8,17 @@ const userSchema = mongoose.Schema({
     password: { type: String },
     phone: { type: String, unique: true, sparse: true },
     isAdmin: { type: Boolean, default: false },
+    roles: {
+        type: [{ type: String, enum: ['customer', 'affiliate_partner', 'support_agent', 'doctor', 'finance_operator', 'affiliate_manager', 'super_admin'] }],
+        default: ['customer'],
+    },
+    accountStatus: { type: String, enum: ['ACTIVE', 'SUSPENDED', 'TERMINATED'], default: 'ACTIVE', index: true },
+    phoneVerifiedAt: { type: Date, default: null },
+    mfaEnabled: { type: Boolean, default: false },
+    mfaSecretEncrypted: { type: Buffer, select: false },
+    mfaSecretIv: { type: Buffer, select: false },
+    mfaSecretAuthTag: { type: Buffer, select: false },
+    mfaEnabledAt: { type: Date, default: null },
     otp: { type: String },
     otpExpires: { type: Date },
     addresses: [{

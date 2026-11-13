@@ -6,6 +6,9 @@ const cookieParser = require('cookie-parser');
 const connectDB = require('./config/db');
 const { startMlmPayoutJob } = require('./jobs/mlmPayoutJob');
 const { initializeMlmIndexes } = require('./services/mlmBootstrapService');
+const { initializeAffiliateIndexes } = require('./services/affiliateBootstrapService');
+const { startOrderReservationJob } = require('./jobs/orderReservationJob');
+const { startAffiliateSettlementJob } = require('./jobs/affiliateSettlementJob');
 const { apiLimiter } = require('./middleware/rateLimitMiddleware');
 const morgan = require('morgan');
 
@@ -49,6 +52,7 @@ app.use(cors({
     credentials: true
 }));
 
+app.use('/api/webhooks/razorpay', express.raw({ type: 'application/json', limit: '1mb' }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
@@ -84,6 +88,7 @@ const webhookRoutes = require('./routes/webhookRoutes');
 const contactRoutes = require('./routes/contactRoutes');
 const newsletterRoutes = require('./routes/newsletterRoutes');
 const mlmRoutes = require('./routes/mlmRoutes');
+const affiliateRoutes = require('./routes/affiliateRoutes');
 const { notFound, errorHandler } = require('./middleware/errorMiddleware');
 
 // ...
@@ -106,6 +111,7 @@ app.use('/api/webhooks', webhookRoutes);
 app.use('/api/contact', contactRoutes);
 app.use('/api/newsletter', newsletterRoutes);
 app.use('/api/mlm', mlmRoutes);
+app.use('/api/affiliate', affiliateRoutes);
 
 // Error Handling (must be after routes)
 app.use(notFound);
@@ -116,6 +122,9 @@ const PORT = process.env.PORT || 3000;
 async function startServer() {
     await connectDB();
     await initializeMlmIndexes();
+    await initializeAffiliateIndexes();
+    startOrderReservationJob();
+    startAffiliateSettlementJob();
     const payoutCronEnabled = process.env.MLM_PAYOUT_CRON_ENABLED === 'true'
         || (process.env.MLM_PAYOUT_CRON_ENABLED !== 'false' && process.env.NODE_ENV === 'production');
     if (payoutCronEnabled) startMlmPayoutJob();

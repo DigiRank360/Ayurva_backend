@@ -1,6 +1,8 @@
 
 const asyncHandler = require('express-async-handler');
 const Order = require('../models/Order');
+const crypto = require('crypto');
+const paymentService = require('../services/retailPaymentService');
 
 // @desc    Handle Shiprocket webhook for order status updates
 // @route   POST /api/webhooks/shiprocket
@@ -141,7 +143,40 @@ const testStatusUpdate = asyncHandler(async (req, res) => {
     });
 });
 
+const handleRazorpayWebhook = asyncHandler(async (req, res) => {
+    const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
+    if (!secret) {
+        res.status(503);
+        throw new Error('Razorpay webhook is not configured.');
+    }
+    if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+        res.status(400);
+        throw new Error('Razorpay webhook body must be raw JSON.');
+    }
+    const signature = req.get('x-razorpay-signature') || '';
+    if (!/^[a-f0-9]{64}$/i.test(signature)) {
+        res.status(401);
+        throw new Error('Razorpay webhook signature is missing or invalid.');
+    }
+    const expected = crypto.createHmac('sha256', secret).update(req.body).digest();
+    const supplied = Buffer.from(signature, 'hex');
+    if (supplied.length !== expected.length || !crypto.timingSafeEqual(supplied, expected)) {
+        res.status(401);
+        throw new Error('Razorpay webhook signature verification failed.');
+    }
+    let event;
+    try {
+        event = JSON.parse(req.body.toString('utf8'));
+    } catch {
+        res.status(400);
+        throw new Error('Razorpay webhook contains invalid JSON.');
+    }
+    const payloadHash = crypto.createHash('sha256').update(req.body).digest('hex');
+    res.json(await paymentService.handleWebhookDelivery({ event, payloadHash }));
+});
+
 module.exports = {
     handleShiprocketWebhook,
+    handleRazorpayWebhook,
     testStatusUpdate
 };

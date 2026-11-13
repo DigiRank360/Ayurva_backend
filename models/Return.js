@@ -73,6 +73,7 @@ const returnSchema = mongoose.Schema({
     },
 
     refundedAt: Date,
+    refundProviderId: { type: String, default: null, maxlength: 120 },
 
     // Admin notes
     adminNotes: String,

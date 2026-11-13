@@ -2,6 +2,21 @@
 const User = require('../models/User');
 const generateToken = require('../utils/generateToken');
 const { startOtpVerification, checkOtpVerification } = require('../utils/twilioService');
+const jwt = require('jsonwebtoken');
+const { encryptKycData, decryptKycData } = require('../utils/kycEncryption');
+const { generateTotpSecret, verifyTotp } = require('../utils/totp');
+
+const isPrivilegedUser = (user) => user.isAdmin
+    || (user.roles || []).some((role) => !['customer', 'affiliate_partner'].includes(role));
+
+function issueMfaChallenge(user, res) {
+    const challengeToken = jwt.sign(
+        { id: user._id, purpose: 'privileged-mfa' },
+        process.env.JWT_SECRET,
+        { expiresIn: '5m' },
+    );
+    return res.json({ success: true, mfaRequired: true, challengeToken });
+}
 
 // @desc    Auth user & get token
 // @route   POST /api/users/login
@@ -12,7 +27,8 @@ const authUser = async (req, res) => {
 
         const user = await User.findOne({ email: email?.trim().toLowerCase() });
 
-        if (user && (await user.matchPassword(password))) {
+        if (user && (user.accountStatus === 'ACTIVE' || !user.accountStatus) && (await user.matchPassword(password))) {
+            if (isPrivilegedUser(user) && user.mfaEnabled) return issueMfaChallenge(user, res);
             const token = generateToken(user._id);
 
             // Set HTTP-only cookie
@@ -361,7 +377,9 @@ const verifyOTP = async (req, res) => {
 
             user.otp = undefined;
             user.otpExpires = undefined;
+            user.phoneVerifiedAt = new Date();
             await user.save();
+            if (isPrivilegedUser(user) && user.mfaEnabled) return issueMfaChallenge(user, res);
             const token = generateToken(user._id);
 
             // Set HTTP-only cookie
@@ -390,6 +408,81 @@ const verifyOTP = async (req, res) => {
     } catch (error) {
         console.error('VERIFY_OTP_ERROR:', error);
         res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+const setupMfa = async (req, res) => {
+    try {
+        const user = await User.findById(req.user._id);
+        if (!user || (user.accountStatus && user.accountStatus !== 'ACTIVE')) {
+            return res.status(403).json({ message: 'This account is not active.' });
+        }
+        if (user.mfaEnabled) return res.status(409).json({ message: 'MFA is already enabled.' });
+
+        const secret = generateTotpSecret();
+        const encrypted = encryptKycData(Buffer.from(secret, 'utf8'));
+        user.mfaSecretEncrypted = encrypted.encrypted;
+        user.mfaSecretIv = encrypted.iv;
+        user.mfaSecretAuthTag = encrypted.authTag;
+        await user.save();
+
+        const label = encodeURIComponent(`${process.env.MFA_ISSUER || 'AyuvaPro'}:${user.email || user.phone || user._id}`);
+        const issuer = encodeURIComponent(process.env.MFA_ISSUER || 'AyuvaPro');
+        res.json({
+            secret,
+            otpauthUrl: `otpauth://totp/${label}?secret=${secret}&issuer=${issuer}&algorithm=SHA1&digits=6&period=30`,
+            expiresInSeconds: 300,
+        });
+    } catch (error) {
+        res.status(error.statusCode || 500).json({ message: error.message });
+    }
+};
+
+const confirmMfa = async (req, res) => {
+    try {
+        const user = await User.findById(req.user._id)
+            .select('+mfaSecretEncrypted +mfaSecretIv +mfaSecretAuthTag');
+        if (!user || !user.mfaSecretEncrypted) return res.status(409).json({ message: 'Start MFA setup first.' });
+        const secret = decryptKycData(user.mfaSecretEncrypted, user.mfaSecretIv, user.mfaSecretAuthTag).toString('utf8');
+        if (!verifyTotp(secret, req.body.code)) return res.status(400).json({ message: 'Authenticator code is invalid or expired.' });
+
+        user.mfaEnabled = true;
+        user.mfaEnabledAt = new Date();
+        await user.save();
+        const token = isPrivilegedUser(user)
+            ? generateToken(user._id, { mfaVerified: true, expiresIn: '8h' })
+            : generateToken(user._id);
+        res.json({ success: true, token, mfaEnabled: true });
+    } catch (error) {
+        res.status(error.statusCode || 500).json({ message: error.message });
+    }
+};
+
+const verifyMfaChallenge = async (req, res) => {
+    try {
+        const challenge = jwt.verify(req.body.challengeToken, process.env.JWT_SECRET);
+        if (challenge.purpose !== 'privileged-mfa') return res.status(401).json({ message: 'Invalid MFA challenge.' });
+        const user = await User.findById(challenge.id)
+            .select('+mfaSecretEncrypted +mfaSecretIv +mfaSecretAuthTag');
+        if (!user || !user.mfaEnabled || !isPrivilegedUser(user)) {
+            return res.status(401).json({ message: 'MFA is not enabled for this account.' });
+        }
+        const secret = decryptKycData(user.mfaSecretEncrypted, user.mfaSecretIv, user.mfaSecretAuthTag).toString('utf8');
+        if (!verifyTotp(secret, req.body.code)) return res.status(401).json({ message: 'Authenticator code is invalid or expired.' });
+
+        const token = generateToken(user._id, { mfaVerified: true, expiresIn: '8h' });
+        res.cookie('jwt', token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV !== 'development',
+            sameSite: 'strict',
+            maxAge: 8 * 60 * 60 * 1000,
+        });
+        res.json({ success: true, token });
+    } catch (error) {
+        if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
+            return res.status(401).json({ message: 'MFA challenge is invalid or expired.' });
+        }
+        res.status(error.statusCode || 500).json({ message: error.message });
     }
 };
 
@@ -434,6 +527,9 @@ module.exports = {
     deleteUserAddress,
     sendOTP,
     verifyOTP,
+    setupMfa,
+    confirmMfa,
+    verifyMfaChallenge,
     forgotPassword,
     logoutUser
 };

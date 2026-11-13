@@ -7,7 +7,9 @@ const uploadKycDocuments = multer({
     limits: { fileSize: 3 * 1024 * 1024, files: 2 },
     fileFilter: (req, file, callback) => {
         if (!allowedTypes.has(file.mimetype)) {
-            return callback(new Error('KYC files must be PDF, JPEG, or PNG, up to 3 MB each.'));
+            const error = new Error('KYC files must be PDF, JPEG, or PNG, up to 3 MB each.');
+            error.statusCode = 400;
+            return callback(error);
         }
         callback(null, true);
     },

@@ -3,6 +3,7 @@ const asyncHandler = require('express-async-handler');
 const Return = require('../models/Return');
 const Order = require('../models/Order');
 const Product = require('../models/Product');
+const paymentService = require('../services/retailPaymentService');
 
 // @desc    Create return/exchange request
 // @route   POST /api/returns
@@ -252,32 +253,14 @@ const updateReturnStatus = asyncHandler(async (req, res) => {
 // @route   PUT /api/admin/returns/:id/refund
 // @access  Private/Admin
 const processRefund = asyncHandler(async (req, res) => {
-    const returnRequest = await Return.findById(req.params.id);
-
-    if (!returnRequest) {
-        res.status(404);
-        throw new Error('Return request not found');
-    }
-
-    if (returnRequest.returnType !== 'Return') {
-        res.status(400);
-        throw new Error('Refund only applicable for returns, not exchanges');
-    }
-
-    if (returnRequest.returnStatus !== 'Completed') {
-        res.status(400);
-        throw new Error('Return must be completed before processing refund');
-    }
-
-    // Mark refund as completed
-    returnRequest.refundStatus = 'Completed';
-    returnRequest.refundedAt = Date.now();
-
-    const updatedReturn = await returnRequest.save();
-
+    const refundRequest = await paymentService.initiateReturnRefund({
+        returnId: req.params.id,
+        actor: req.user._id,
+        req,
+    });
     res.json({
-        message: 'Refund processed successfully',
-        return: updatedReturn
+        message: 'Refund is pending confirmation from Razorpay.',
+        refund: refundRequest,
     });
 });
 

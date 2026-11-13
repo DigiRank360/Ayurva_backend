@@ -1,88 +1,28 @@
 
 const asyncHandler = require('express-async-handler');
 const Order = require('../models/Order');
-const Product = require('../models/Product');
+const retailOrderService = require('../services/retailOrderService');
+const retailPaymentService = require('../services/retailPaymentService');
 
 // @desc    Create new order
 // @route   POST /api/orders
 // @access  Private
-const addOrderItems = async (req, res) => {
+const addOrderItems = asyncHandler(async (req, res) => {
+    const { order, created } = await retailOrderService.createRetailOrder(
+        req.user._id,
+        req.body,
+        req.get('Idempotency-Key'),
+        req,
+    );
     try {
-        const {
-            orderItems,
-            shippingAddress,
-            paymentMethod,
-            itemsPrice,
-            taxPrice,
-            shippingPrice,
-            totalPrice,
-        } = req.body;
-
-        if (orderItems && orderItems.length === 0) {
-            return res.status(400).json({ message: 'No order items' });
-        }
-
-        console.log("=== INCOMING ORDER PAYLOAD ===");
-        console.log(JSON.stringify(req.body, null, 2));
-        console.log("===============================");
-
-        // Validate stock for all items
-        for (const item of orderItems) {
-            const product = await Product.findById(item.product);
-
-            if (!product) {
-                return res.status(404).json({
-                    message: `Product not found: ${item.name}`
-                });
-            }
-
-            if (product.stock < item.qty) {
-                return res.status(400).json({
-                    message: `Insufficient stock for ${product.name}. Available: ${product.stock}`
-                });
-            }
-        }
-
-        // Create order with proper initial states
-        const order = new Order({
-            orderItems,
-            user: req.user._id,
-            shippingAddress,
-            paymentMethod: paymentMethod || 'COD',
-            itemsPrice,
-            taxPrice: taxPrice || 0,
-            shippingPrice: shippingPrice || 0,
-            totalPrice,
-
-            // Initial states based on payment method
-            paymentStatus: paymentMethod === 'COD' ? 'Pending' : 'Pending',
-            orderStatus: 'Pending', // Remains pending until payment confirmed or admin processes
-        });
-
-        const createdOrder = await order.save();
-
-        // Decrease stock for all items
-        for (const item of orderItems) {
-            const product = await Product.findById(item.product);
-            product.stock -= item.qty;
-            product.inStock = product.stock > 0;
-            await product.save();
-        }
-
-        // Send order confirmation email (non-blocking, should not fail order)
-        try {
-            const { sendOrderConfirmation } = require('../utils/emailService');
-            await sendOrderConfirmation(createdOrder, req.user.email);
-        } catch (emailErr) {
-            console.error('Email send failed (non-critical):', emailErr.message);
-        }
-
-        res.status(201).json(createdOrder);
+        if (!created) return res.status(200).json(order);
+        const { sendOrderConfirmation } = require('../utils/emailService');
+        await sendOrderConfirmation(order, req.user.email);
     } catch (error) {
-        console.error('Order creation failed:', error.message);
-        res.status(500).json({ message: error.message });
+        console.error('Order confirmation email failed:', error.message);
     }
-};
+    res.status(201).json(order);
+});
 
 // @desc    Get logged in user orders
 // @route   GET /api/orders/myorders?page=1&limit=10
@@ -113,52 +53,30 @@ const getMyOrders = asyncHandler(async (req, res) => {
 // @desc    Get order by ID
 // @route   GET /api/orders/:id
 // @access  Private
-const getOrderById = async (req, res) => {
-    try {
-        const order = await Order.findById(req.params.id).populate('user', 'name email');
-
-        if (order) {
-            res.json(order);
-        } else {
-            res.status(404).json({ message: 'Order not found' });
-        }
-    } catch (error) {
-        res.status(500).json({ message: error.message });
+const getOrderById = asyncHandler(async (req, res) => {
+    const order = await Order.findById(req.params.id).populate('user', 'name email');
+    if (!order) {
+        res.status(404);
+        throw new Error('Order not found');
     }
-};
+    if (String(order.user._id) !== String(req.user._id) && !req.user.isAdmin) {
+        res.status(403);
+        throw new Error('Not authorized to view this order.');
+    }
+    res.json(order);
+});
 
 // @desc    Update order to paid (After Razorpay verification)
 // @route   PUT /api/orders/:id/pay
 // @access  Private
-const updateOrderToPaid = async (req, res) => {
-    try {
-        const order = await Order.findById(req.params.id);
-
-        if (order) {
-            const { razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body;
-
-            order.paymentStatus = 'Paid';
-            order.paymentResult = {
-                razorpayOrderId,
-                razorpayPaymentId,
-                razorpaySignature,
-                paidAt: Date.now()
-            };
-
-            // Move to Processing after successful payment
-            if (order.orderStatus === 'Pending') {
-                order.orderStatus = 'Processing';
-            }
-
-            const updatedOrder = await order.save();
-            res.json(updatedOrder);
-        } else {
-            res.status(404).json({ message: 'Order not found' });
-        }
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
-};
+const updateOrderToPaid = asyncHandler(async (req, res) => {
+    const result = await retailPaymentService.verifyPaymentForOrder(req.user._id, {
+        razorpay_order_id: req.body.razorpayOrderId || req.body.razorpay_order_id,
+        razorpay_payment_id: req.body.razorpayPaymentId || req.body.razorpay_payment_id,
+        razorpay_signature: req.body.razorpaySignature || req.body.razorpay_signature,
+    }, req.params.id);
+    res.json(result);
+});
 
 // @desc    Process order (Admin starts processing)
 // @route   PUT /api/orders/:id/process
@@ -168,6 +86,10 @@ const processOrder = async (req, res) => {
         const order = await Order.findById(req.params.id);
 
         if (order) {
+            if (order.orderStatus === 'Cancelled') {
+                res.status(409);
+                throw new Error('Cancelled orders cannot be processed.');
+            }
             // COD orders can be processed directly, Razorpay must be paid
             if (order.paymentMethod === 'Razorpay' && order.paymentStatus !== 'Paid') {
                 res.status(400).json({ message: 'Payment not completed yet' });
@@ -259,6 +181,16 @@ const updateOrderStatusAdmin = async (req, res) => {
                 return res.status(400).json({ message: 'Invalid order status provided' });
             }
 
+            if (status === 'Cancelled') {
+                const cancelled = await retailOrderService.cancelOrder({
+                    orderId: order._id,
+                    userId: req.user._id,
+                    isAdmin: true,
+                    reason: req.body.reason || 'Cancelled by administrator',
+                    req,
+                });
+                return res.json(cancelled.order);
+            }
             order.orderStatus = status;
 
             // Handle special side-effects if status is directly forced to Delivered
@@ -284,69 +216,26 @@ const updateOrderStatusAdmin = async (req, res) => {
 // @desc    Cancel Order
 // @route   PUT /api/orders/:id/cancel
 // @access  Private
-const cancelOrder = async (req, res) => {
+const cancelOrder = asyncHandler(async (req, res) => {
+    const { order, changed } = await retailOrderService.cancelOrder({
+        orderId: req.params.id,
+        userId: req.user._id,
+        isAdmin: Boolean(req.user.isAdmin),
+        reason: req.body.reason,
+        req,
+    });
     try {
-        const order = await Order.findById(req.params.id);
-
-        if (order) {
-            // Check if user owns order or is admin
-            if (order.user.toString() !== req.user._id.toString() && !req.user.isAdmin) {
-                res.status(401).json({ message: 'Not authorized' });
-                return;
-            }
-
-            // Cannot cancel if already shipped or delivered
-            if (['Shipped', 'Delivered'].includes(order.orderStatus)) {
-                res.status(400).json({ message: 'Cannot cancel shipped/delivered order' });
-                return;
-            }
-
-            // ✨ RESTORE STOCK for all items in the order
-            for (const item of order.orderItems) {
-                const product = await Product.findById(item.product);
-                if (product) {
-                    product.stock += item.qty;  // Add back the quantity
-                    product.inStock = product.stock > 0;
-                    await product.save();
-                    console.log(`✅ Stock restored for ${product.name}: +${item.qty} (New stock: ${product.stock})`);
-                }
-            }
-
-            order.orderStatus = 'Cancelled';
-            order.isCancelled = true;
-            order.cancelledAt = Date.now();
-            order.cancellationReason = req.body.reason || 'Customer requested';
-
-            // If paid, mark for refund
-            if (order.paymentStatus === 'Paid') {
-                order.paymentStatus = 'Refunded';
-            }
-
-            const updatedOrder = await order.save();
-
-            // Send cancellation notification email
-            try {
-                const { sendOrderStatusUpdate } = require('../utils/emailService');
-                const User = require('../models/User');
-                const user = await User.findById(order.user);
-                if (user) {
-                    await sendOrderStatusUpdate(updatedOrder, user.email);
-                }
-            } catch (emailError) {
-                console.log('Email notification failed:', emailError.message);
-            }
-
-            res.json({
-                message: 'Order cancelled successfully and stock restored',
-                order: updatedOrder
-            });
-        } else {
-            res.status(404).json({ message: 'Order not found' });
+        if (changed) {
+        const { sendOrderStatusUpdate } = require('../utils/emailService');
+        const User = require('../models/User');
+        const user = await User.findById(order.user);
+        if (user) await sendOrderStatusUpdate(order, user.email);
         }
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error('Order cancellation email failed:', error.message);
     }
-};
+    res.json({ message: 'Order cancelled and reserved stock released.', order });
+});
 
 
 

@@ -5,15 +5,15 @@ const paymentSchema = mongoose.Schema(
     {
         razorpayOrderId: {
             type: String,
-            required: true,
+            default: null,
         },
         razorpayPaymentId: {
             type: String,
-            required: true,
+            default: null,
         },
         razorpaySignature: {
             type: String,
-            required: true,
+            default: null,
         },
         orderId: {
             type: mongoose.Schema.Types.ObjectId,
@@ -23,15 +23,39 @@ const paymentSchema = mongoose.Schema(
         amount: {
             type: Number,
             required: true,
+            min: 1,
+        },
+        currency: {
+            type: String,
+            required: true,
+            default: 'INR',
         },
         status: {
             type: String,
-            default: 'Pending',
+            enum: ['Created', 'Captured', 'Failed', 'Refunded', 'Pending'],
+            default: 'Created',
+            index: true,
         },
+        user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
+        verifiedAt: { type: Date, default: null },
+        capturedAt: { type: Date, default: null },
+        providerEventId: { type: String, default: null },
+        failureCode: { type: String, default: null, maxlength: 80 },
+        refundedAmountMinor: { type: Number, default: 0, min: 0 },
     },
     {
         timestamps: true,
     }
 );
+
+paymentSchema.index({ razorpayOrderId: 1 }, {
+    unique: true,
+    partialFilterExpression: { razorpayOrderId: { $type: 'string' } },
+});
+paymentSchema.index({ razorpayPaymentId: 1 }, {
+    unique: true,
+    partialFilterExpression: { razorpayPaymentId: { $type: 'string' } },
+});
+paymentSchema.index({ orderId: 1, createdAt: -1 });
 
 module.exports = mongoose.model('Payment', paymentSchema);

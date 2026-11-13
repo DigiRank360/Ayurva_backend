@@ -13,17 +13,24 @@ const {
     deleteUserAddress,
     sendOTP,
     verifyOTP,
+    setupMfa,
+    confirmMfa,
+    verifyMfaChallenge,
     forgotPassword,
     logoutUser
 } = require('../controllers/userController');
 const { protect } = require('../middleware/authMiddleware');
+const { authLimiter } = require('../middleware/rateLimitMiddleware');
 
-router.post('/', registerUser);
-router.post('/login', authUser);
+router.post('/', authLimiter, registerUser);
+router.post('/login', authLimiter, authUser);
 router.post('/logout', logoutUser);
-router.post('/send-otp', sendOTP);
-router.post('/verify-otp', verifyOTP);
-router.post('/forgot-password', forgotPassword);
+router.post('/send-otp', authLimiter, sendOTP);
+router.post('/verify-otp', authLimiter, verifyOTP);
+router.post('/forgot-password', authLimiter, forgotPassword);
+router.post('/mfa/verify-challenge', authLimiter, verifyMfaChallenge);
+router.post('/mfa/setup', protect, authLimiter, setupMfa);
+router.post('/mfa/confirm', protect, authLimiter, confirmMfa);
 router.route('/profile')
     .get(protect, getUserProfile)
     .put(protect, updateUserProfile);

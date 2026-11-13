@@ -3,6 +3,16 @@ const mongoose = require('mongoose');
 
 const orderSchema = mongoose.Schema({
     user: { type: mongoose.Schema.Types.ObjectId, required: true, ref: 'User' },
+    purchaseType: { type: String, enum: ['RETAIL', 'AFFILIATE_PACKAGE'], default: 'RETAIL', index: true },
+    affiliatePackage: { type: mongoose.Schema.Types.ObjectId, ref: 'AffiliatePackage', default: null },
+    packageSnapshot: { type: mongoose.Schema.Types.Mixed, default: null, immutable: true },
+    affiliateAttribution: { type: mongoose.Schema.Types.ObjectId, ref: 'AffiliateAttribution', default: null, immutable: true },
+    idempotencyKey: { type: String, default: null },
+    idempotencyHash: { type: String, default: null, select: false, immutable: true },
+    paymentAttemptLockToken: { type: String, default: null, select: false },
+    paymentAttemptLockUntil: { type: Date, default: null, select: false },
+    stockReservationExpiresAt: { type: Date, default: null, index: true },
+    stockReleasedAt: { type: Date, default: null },
 
     orderItems: [{
         name: { type: String, required: true },
@@ -25,6 +35,8 @@ const orderSchema = mongoose.Schema({
 
     // Pricing breakdown
     itemsPrice: { type: Number, required: true, default: 0.0 },
+    discountPrice: { type: Number, default: 0.0 },
+    offerSnapshot: { type: mongoose.Schema.Types.Mixed, default: null, immutable: true },
     taxPrice: { type: Number, default: 0.0 },
     shippingPrice: { type: Number, default: 0.0 },
     totalPrice: { type: Number, required: true, default: 0.0 },
@@ -38,7 +50,7 @@ const orderSchema = mongoose.Schema({
     },
     paymentStatus: {
         type: String,
-        enum: ['Pending', 'Paid', 'Failed', 'Refunded'],
+        enum: ['Pending', 'Paid', 'Failed', 'Partially Refunded', 'Refunded'],
         default: 'Pending'
     },
     paymentResult: {
@@ -97,5 +109,12 @@ const orderSchema = mongoose.Schema({
     cancellationReason: { type: String }
 
 }, { timestamps: true });
+
+orderSchema.index({ user: 1, idempotencyKey: 1 }, {
+    unique: true,
+    partialFilterExpression: { idempotencyKey: { $type: 'string' } },
+});
+orderSchema.index({ affiliateAttribution: 1, createdAt: -1 });
+orderSchema.index({ affiliatePackage: 1, paymentStatus: 1 });
 
 module.exports = mongoose.model('Order', orderSchema);

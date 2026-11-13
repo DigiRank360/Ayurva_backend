@@ -17,6 +17,10 @@ const protect = async (req, res, next) => {
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
             req.user = await User.findById(decoded.id).select('-password');
+            req.auth = decoded;
+            if (!req.user || (req.user.accountStatus && req.user.accountStatus !== 'ACTIVE')) {
+                return res.status(403).json({ message: 'This account is not active.' });
+            }
 
             next();
         } catch (error) {
