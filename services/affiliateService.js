@@ -3,12 +3,15 @@ const AffiliateProfile = require('../models/AffiliateProfile');
 const AffiliatePackage = require('../models/AffiliatePackage');
 const AffiliateReferralLink = require('../models/AffiliateReferralLink');
 const AffiliateReferralEvent = require('../models/AffiliateReferralEvent');
+const AffiliateDailyCap = require('../models/AffiliateDailyCap');
+const AffiliateAttribution = require('../models/AffiliateAttribution');
 const AffiliateCommission = require('../models/AffiliateCommission');
 const AffiliatePayoutRequest = require('../models/AffiliatePayoutRequest');
 const AffiliateRewardWindow = require('../models/AffiliateRewardWindow');
 const AffiliateSupportEntitlement = require('../models/AffiliateSupportEntitlement');
 const AffiliateSupportSession = require('../models/AffiliateSupportSession');
 const AffiliateConsent = require('../models/AffiliateConsent');
+const Order = require('../models/Order');
 const User = require('../models/User');
 const { writeAudit } = require('./affiliateAuditService');
 const { assertAffiliateFeatureEnabled, getActiveConfig } = require('./affiliateConfigService');
@@ -160,9 +163,17 @@ async function createReferralLink(userId, { kind, packageId, campaignId }, req) 
 }
 
 async function getAffiliateDashboard(userId) {
-    const profile = await AffiliateProfile.findOne({ user: userId });
+    const profile = await AffiliateProfile.findOne({ user: userId })
+        .populate('activePackage', 'code name version durationMonths mrp offerPrice videoReward dailyReferralCap rewardWindowDays doctorSessionsPerMonth items')
+        .lean();
     if (!profile) throw affiliateError('Affiliate profile not found.', 404);
-    const [window, counts, commissions, payouts, entitlements, wallet] = await Promise.all([
+    const indiaDateKey = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Kolkata',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+    }).format(new Date());
+    const [window, counts, commissions, payouts, entitlements, wallet, dailyCap, packageSales] = await Promise.all([
         AffiliateRewardWindow.findOne({ affiliate: profile._id, status: 'ACTIVE' }).sort({ endsAt: -1 }).lean(),
         AffiliateReferralEvent.aggregate([
             { $match: { affiliate: profile._id } },
@@ -172,7 +183,36 @@ async function getAffiliateDashboard(userId) {
         AffiliatePayoutRequest.find({ affiliate: profile._id }).sort({ createdAt: -1 }).limit(50).lean(),
         AffiliateSupportEntitlement.find({ affiliate: profile._id, status: 'ACTIVE' }).sort({ endsAt: 1 }).lean(),
         getWalletSummary(profile._id),
+        AffiliateDailyCap.findOne({ affiliate: profile._id, indiaDateKey }).lean(),
+        AffiliateAttribution.aggregate([
+            {
+                $match: {
+                    affiliate: profile._id,
+                    status: 'CONVERTED',
+                    convertedOrder: { $ne: null },
+                },
+            },
+            {
+                $lookup: {
+                    from: Order.collection.name,
+                    localField: 'convertedOrder',
+                    foreignField: '_id',
+                    as: 'order',
+                },
+            },
+            { $unwind: '$order' },
+            {
+                $match: {
+                    'order.purchaseType': 'AFFILIATE_PACKAGE',
+                    'order.paymentStatus': 'Paid',
+                    'order.orderStatus': { $ne: 'Cancelled' },
+                    'order.isCancelled': { $ne: true },
+                },
+            },
+            { $count: 'count' },
+        ]),
     ]);
+    const attributedPackageSales = packageSales[0]?.count || 0;
     const referralLinks = await AffiliateReferralLink.find({ affiliate: profile._id, active: true })
         .populate('package', 'code name version')
         .populate('campaign', 'name slug')
@@ -185,9 +225,17 @@ async function getAffiliateDashboard(userId) {
             packageTier: profile.packageTier,
             activatedAt: profile.activatedAt,
             riskStatus: profile.riskStatus,
+            activePackage: profile.activePackage || null,
         },
         rewardWindow: window,
         eventCounts: Object.fromEntries(counts.map(({ _id, count }) => [_id, count])),
+        dailyReferralTracker: {
+            date: indiaDateKey,
+            cap: profile.activePackage?.dailyReferralCap ?? null,
+            approved: dailyCap?.approvedCount || 0,
+            reserved: dailyCap?.reservedCount || 0,
+        },
+        attributedPackageSales,
         earnings: wallet,
         referralLinks,
         commissions,
@@ -243,9 +291,14 @@ async function recordConsent(userId, { purpose, version, granted }, req) {
 async function getProfileStatus(userId) {
     const [profile, user] = await Promise.all([
         AffiliateProfile.findOne({ user: userId }).populate('activePackage', 'code name version'),
-        User.findById(userId).select('phoneVerifiedAt accountStatus'),
+        User.findById(userId).select('name email phone phoneVerifiedAt accountStatus'),
     ]);
-    return { profile, phoneVerifiedAt: user?.phoneVerifiedAt || null, accountStatus: user?.accountStatus || 'ACTIVE' };
+    return {
+        profile,
+        user: user ? { name: user.name, email: user.email, phone: user.phone } : null,
+        phoneVerifiedAt: user?.phoneVerifiedAt || null,
+        accountStatus: user?.accountStatus || 'ACTIVE',
+    };
 }
 
 module.exports = {

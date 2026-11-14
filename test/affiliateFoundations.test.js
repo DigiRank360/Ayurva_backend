@@ -7,6 +7,7 @@ const { verifyTotp } = require('../utils/totp');
 const { encryptSupportNote, decryptSupportNote } = require('../utils/affiliateSupportCrypto');
 const { isValidRazorpaySignature } = require('../services/retailPaymentService');
 const { optionalProtect, requireAffiliateRoles } = require('../middleware/affiliateAuthorization');
+const { protect } = require('../middleware/authMiddleware');
 
 test('affiliate money uses exact paise and basis-point rounding', () => {
     assert.equal(toMinorUnits(mongoose.Types.Decimal128.fromString('12.30')), 1230);
@@ -70,5 +71,45 @@ test('video referral routes permit guest traffic with optional authentication', 
 
     let called = false;
     optionalProtect({ headers: {}, cookies: {} }, {}, () => { called = true; });
+    assert.equal(called, true);
+});
+
+test('affiliate applicants can access their own status and portal settings as customers', () => {
+    const router = require('../routes/affiliateRoutes');
+    for (const path of ['/profile/status', '/portal-settings']) {
+        const layer = router.stack.find((item) => item.route?.path === path && item.route.methods.get);
+        assert.ok(layer, `${path} route exists`);
+        assert.equal(layer.route.stack[0].handle, protect);
+
+        let called = false;
+        layer.route.stack[1].handle(
+            { user: { roles: ['customer'] }, auth: {} },
+            { status() { return this; }, json() {} },
+            () => { called = true; },
+        );
+        assert.equal(called, true, `${path} allows a customer to check their own affiliate onboarding`);
+    }
+});
+
+test('affiliate configuration version listing is manager-only and MFA-gated', () => {
+    const router = require('../routes/affiliateRoutes');
+    const layer = router.stack.find((item) => item.route?.path === '/admin/config/versions' && item.route.methods.get);
+    assert.ok(layer, 'configuration versions route exists');
+    assert.equal(layer.route.stack[0].handle, protect);
+
+    const authorize = layer.route.stack[1].handle;
+    let called = false;
+    authorize(
+        { user: { roles: ['affiliate_manager'] }, auth: { mfaVerified: false } },
+        { status() { return this; }, json() {} },
+        () => { called = true; },
+    );
+    assert.equal(called, false, 'manager access requires verified MFA');
+
+    authorize(
+        { user: { roles: ['affiliate_manager'] }, auth: { mfaVerified: true } },
+        { status() { return this; }, json() {} },
+        () => { called = true; },
+    );
     assert.equal(called, true);
 });

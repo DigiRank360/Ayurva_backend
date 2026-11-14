@@ -44,6 +44,8 @@ const authUser = async (req, res) => {
                 name: user.name,
                 email: user.email,
                 isAdmin: user.isAdmin ,
+                roles: user.roles || [],
+                mfaEnabled: user.mfaEnabled,
                 token: token,
             });
         } else {
@@ -105,6 +107,8 @@ const getUserProfile = async (req, res) => {
                 name: user.name,
                 email: user.email,
                 isAdmin: user.isAdmin,
+                roles: user.roles || [],
+                mfaEnabled: user.mfaEnabled,
                 addresses: user.addresses // Include addresses
             });
         } else {

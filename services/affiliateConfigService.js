@@ -59,6 +59,46 @@ async function getActiveConfig(session) {
     return query.lean();
 }
 
+async function listConfigVersions() {
+    return AffiliateProgramConfig.find()
+        .sort({ version: -1 })
+        .limit(50)
+        .lean();
+}
+
+async function getPortalSettings() {
+    const config = await getActiveConfig();
+    const enabled = Boolean(config?.featureEnabled) && incompleteConfiguration(config).length === 0;
+    if (!enabled) return { enabled: false, policies: null, payout: null };
+    return {
+        enabled: true,
+        policies: {
+            affiliateAgreementVersion: config.affiliateAgreementVersion,
+            termsVersion: config.termsVersion,
+            privacyVersion: config.privacyVersion,
+            referralConsentVersion: config.referralConsentVersion,
+            supportConsentVersion: config.supportConsentVersion,
+            kycConsentVersion: config.kycConsentVersion,
+        },
+        payout: {
+            minimum: config.payoutMinimum.toString(),
+            currency: config.payoutCurrency,
+            requiresKyc: config.requiresKycForPayout,
+        },
+    };
+}
+
+async function getPublicReferralPolicy() {
+    const config = await getActiveConfig();
+    const enabled = Boolean(config?.featureEnabled)
+        && Boolean(config.referralConsentVersion)
+        && incompleteConfiguration(config).length === 0;
+    return {
+        enabled,
+        referralConsentVersion: enabled ? config.referralConsentVersion : null,
+    };
+}
+
 async function assertAffiliateFeatureEnabled(session) {
     const config = await getActiveConfig(session);
     if (!config || !config.featureEnabled) {
@@ -170,7 +210,10 @@ module.exports = {
     activateConfigVersion,
     assertAffiliateFeatureEnabled,
     createConfigDraft,
+    getPortalSettings,
+    getPublicReferralPolicy,
     getActiveConfig,
     incompleteConfiguration,
+    listConfigVersions,
     updateConfigDraft,
 };

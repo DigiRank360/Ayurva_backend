@@ -58,6 +58,18 @@ const dashboard = asyncHandler(async (req, res) => {
     res.json(await affiliateService.getAffiliateDashboard(req.user._id));
 });
 
+const profileStatus = asyncHandler(async (req, res) => {
+    res.json(await affiliateService.getProfileStatus(req.user._id));
+});
+
+const portalSettings = asyncHandler(async (req, res) => {
+    res.json(await configService.getPortalSettings());
+});
+
+const referralPolicy = asyncHandler(async (req, res) => {
+    res.json(await configService.getPublicReferralPolicy());
+});
+
 const activity = asyncHandler(async (req, res) => {
     res.json(await affiliateService.listAffiliateActivity(req.user._id, req.query));
 });
@@ -391,6 +403,10 @@ const getAdminConfig = asyncHandler(async (req, res) => {
     } : null);
 });
 
+const listConfigVersions = asyncHandler(async (req, res) => {
+    res.json(await configService.listConfigVersions());
+});
+
 const createConfigDraft = asyncHandler(async (req, res) => {
     const config = await configService.createConfigDraft(req.user._id, req.body.reason, req);
     res.status(201).json(config);
@@ -431,6 +447,7 @@ const listAdminPackages = asyncHandler(async (req, res) => {
 const listRiskReviewProfiles = asyncHandler(async (req, res) => {
     const profiles = await AffiliateProfile.find({ riskStatus: { $in: ['PENDING', 'REVIEW', 'BLOCKED'] } })
         .select('affiliateId referralCode user status packageTier riskStatus statusReason activatedAt createdAt')
+        .populate('user', 'name email')
         .sort({ createdAt: 1 })
         .limit(100)
         .lean();
@@ -606,6 +623,7 @@ module.exports = {
     assignSupportSession,
     consent,
     createConfigDraft,
+    listConfigVersions,
     createLink,
     createPackageOrder,
     dashboard,
@@ -624,6 +642,9 @@ module.exports = {
     payoutsCsv,
     markNotificationRead,
     payoutMethod,
+    portalSettings,
+    profileStatus,
+    referralPolicy,
     processPayout,
     recordVideoProgress,
     requestPayout,

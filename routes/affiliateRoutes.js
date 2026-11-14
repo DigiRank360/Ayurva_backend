@@ -12,10 +12,13 @@ const finance = requireAffiliateRoles('finance_operator', 'super_admin');
 const affiliateManager = requireAffiliateRoles('affiliate_manager', 'super_admin');
 
 router.get('/packages', controller.getPackages);
+router.get('/referral-policy', controller.referralPolicy);
 router.post('/referrals/:token/visit', optionalProtect, controller.trackReferral);
 
 router.post('/enroll', protect, customerOrPartner, controller.enroll);
 router.post('/packages/orders', protect, customerOrPartner, controller.createPackageOrder);
+router.get('/profile/status', protect, customerOrPartner, controller.profileStatus);
+router.get('/portal-settings', protect, customerOrPartner, controller.portalSettings);
 router.get('/profile', protect, partner, controller.getProfile);
 router.patch('/profile', protect, partner, controller.updateProfile);
 router.get('/dashboard', protect, partner, controller.dashboard);
@@ -56,6 +59,7 @@ router.get('/admin/kyc/:applicationId', protect, finance, controller.getKycAppli
 router.post('/admin/kyc/:applicationId/review', protect, finance, controller.reviewKyc);
 router.get('/admin/kyc/documents/:documentId', protect, finance, controller.downloadKycDocument);
 router.get('/admin/config', protect, affiliateManager, controller.getAdminConfig);
+router.get('/admin/config/versions', protect, affiliateManager, controller.listConfigVersions);
 router.post('/admin/config/drafts', protect, affiliateManager, controller.createConfigDraft);
 router.patch('/admin/config/drafts/:configId', protect, affiliateManager, controller.updateConfigDraft);
 router.post('/admin/config/:configId/activate', protect, affiliateManager, controller.activateConfig);

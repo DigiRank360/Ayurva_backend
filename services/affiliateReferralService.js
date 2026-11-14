@@ -40,11 +40,18 @@ function cookieOptions(maxAge) {
         httpOnly: true,
         secure: production,
         sameSite: production ? 'none' : 'lax',
-        path: '/api/affiliate',
+        path: '/api',
         maxAge,
     };
     if (process.env.AFFILIATE_COOKIE_DOMAIN) options.domain = process.env.AFFILIATE_COOKIE_DOMAIN;
     return options;
+}
+
+function clearLegacyAffiliateCookies(res) {
+    const options = { ...cookieOptions(0), path: '/api/affiliate' };
+    for (const name of [ATTRIBUTION_COOKIE, VISITOR_COOKIE, CONSENT_COOKIE]) {
+        res.clearCookie(name, options);
+    }
 }
 
 function issueVisitorId(req, res, days) {
@@ -98,6 +105,7 @@ async function trackReferralVisit(req, res, token) {
         return { tracked: false, message: 'Self-referrals are not eligible.' };
     }
 
+    clearLegacyAffiliateCookies(res);
     const visitorId = issueVisitorId(req, res, config.visitorUniquenessDays);
     const consentToken = jwt.sign({
         purpose: 'affiliate-tracking-consent',
