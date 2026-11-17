@@ -21,6 +21,10 @@ const protect = async (req, res, next) => {
             if (!req.user || (req.user.accountStatus && req.user.accountStatus !== 'ACTIVE')) {
                 return res.status(403).json({ message: 'This account is not active.' });
             }
+            if (decoded.purpose === 'privileged-mfa-setup'
+                && !['/mfa/setup', '/mfa/confirm'].includes(req.path)) {
+                return res.status(403).json({ message: 'MFA setup credentials cannot access this resource.' });
+            }
 
             next();
         } catch (error) {
@@ -34,6 +38,15 @@ const protect = async (req, res, next) => {
     }
 };
 
+const requireMfaSetup = (req, res, next) => {
+    if (req.auth?.purpose !== 'privileged-mfa-setup'
+        || req.user.mfaEnabled
+        || !(req.user.isAdmin || (req.user.roles || []).some((role) => !['customer', 'affiliate_partner'].includes(role)))) {
+        return res.status(403).json({ message: 'A valid privileged MFA setup session is required.' });
+    }
+    next();
+};
+
 const admin = (req, res, next) => {
     if (req.user && req.user.isAdmin) {
         next();
@@ -43,4 +56,4 @@ const admin = (req, res, next) => {
     }
 };
 
-module.exports = { protect, admin, getRequestToken };
+module.exports = { protect, requireMfaSetup, admin, getRequestToken };

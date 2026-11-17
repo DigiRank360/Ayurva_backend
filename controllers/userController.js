@@ -18,17 +18,35 @@ function issueMfaChallenge(user, res) {
     return res.json({ success: true, mfaRequired: true, challengeToken });
 }
 
+function issueMfaSetupChallenge(user, res) {
+    const setupToken = jwt.sign(
+        { id: user._id, purpose: 'privileged-mfa-setup' },
+        process.env.JWT_SECRET,
+        { expiresIn: '10m' },
+    );
+    return res.json({ success: true, mfaSetupRequired: true, setupToken });
+}
+
 // @desc    Auth user & get token
 // @route   POST /api/users/login
 // @access  Public
 const authUser = async (req, res) => {
     try {
-        const { email, password } = req.body;
+        const { email, identifier, password } = req.body;
+        const loginId = (typeof identifier === 'string' ? identifier : typeof email === 'string' ? email : '').trim();
+        if (!loginId || typeof password !== 'string') {
+            return res.status(401).json({ message: 'Invalid email or password' });
+        }
 
-        const user = await User.findOne({ email: email?.trim().toLowerCase() });
+        const user = await User.findOne({
+            $or: [{ email: loginId.toLowerCase() }, { phone: loginId }],
+        });
 
         if (user && (user.accountStatus === 'ACTIVE' || !user.accountStatus) && (await user.matchPassword(password))) {
-            if (isPrivilegedUser(user) && user.mfaEnabled) return issueMfaChallenge(user, res);
+            if (isPrivilegedUser(user)) {
+                if (user.mfaEnabled) return issueMfaChallenge(user, res);
+                return issueMfaSetupChallenge(user, res);
+            }
             const token = generateToken(user._id);
 
             // Set HTTP-only cookie
@@ -468,7 +486,10 @@ const verifyMfaChallenge = async (req, res) => {
         if (challenge.purpose !== 'privileged-mfa') return res.status(401).json({ message: 'Invalid MFA challenge.' });
         const user = await User.findById(challenge.id)
             .select('+mfaSecretEncrypted +mfaSecretIv +mfaSecretAuthTag');
-        if (!user || !user.mfaEnabled || !isPrivilegedUser(user)) {
+        if (!user
+            || (user.accountStatus && user.accountStatus !== 'ACTIVE')
+            || !user.mfaEnabled
+            || !isPrivilegedUser(user)) {
             return res.status(401).json({ message: 'MFA is not enabled for this account.' });
         }
         const secret = decryptKycData(user.mfaSecretEncrypted, user.mfaSecretIv, user.mfaSecretAuthTag).toString('utf8');
